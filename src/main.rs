@@ -4,7 +4,6 @@ use rustop::opts;
 use sdl2::event::Event;
 // use sdl2::AudioSubsystem;
 use sdl2::keyboard::Scancode;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::time::Duration;
@@ -15,21 +14,56 @@ mod registers;
 
 const PIXEL_SCALE: usize = 16; // Draw each pixel in the display as a group of this size
 
-fn get_current_pressed_keys(event_pump: &sdl2::EventPump) -> Vec<u8> {
-    // Map scancodes to chip8 internal characters
-    let scancode_map: HashMap<Scancode, u8> = HashMap::from([
-        (Scancode::Num1, 0x1), (Scancode::Num2, 0x2), (Scancode::Num3, 0x3), (Scancode::Num4, 0xC),
-        (Scancode::Q, 0x4), (Scancode::W, 0x5), (Scancode::E, 0x6), (Scancode::R, 0xD),
-        (Scancode::A, 0x7), (Scancode::S, 0x8), (Scancode::D, 0x9), (Scancode::F, 0xE),
-        (Scancode::Z, 0xA), (Scancode::X, 0x0), (Scancode::C, 0xB), (Scancode::V, 0xF),
-        ]);
-        
-    // Turn the currently pressed scancodes into a vector of relevant internal digits
-    return event_pump.keyboard_state().pressed_scancodes().filter(
-        |code| scancode_map.contains_key(code)
-    ).map(
-        |code| scancode_map.get(&code).unwrap().clone()
-    ).collect()
+fn get_scancode_for_digit(key: u8) -> Scancode {
+    // 1 2 3 4 // 1 2 3 C
+    // Q W E R // 4 5 6 D
+    // A S D F // 7 8 9 E
+    // Z X C V // A 0 B F
+    return match key {
+        0x0 => Scancode::X,
+        0x1 => Scancode::Num1,
+        0x2 => Scancode::Num2,
+        0x3 => Scancode::Num3,
+        0x4 => Scancode::Q,
+        0x5 => Scancode::W,
+        0x6 => Scancode::E,
+        0x7 => Scancode::A,
+        0x8 => Scancode::S,
+        0x9 => Scancode::D,
+        0xA => Scancode::Z,
+        0xB => Scancode::C,
+        0xC => Scancode::Num4,
+        0xD => Scancode::R,
+        0xE => Scancode::F,
+        0xF => Scancode::V,
+        _ => Scancode::Space,
+    }
+}
+
+fn get_digit_for_scancode(key: Scancode) -> u8 {
+    // 1 2 3 4 // 1 2 3 C
+    // Q W E R // 4 5 6 D
+    // A S D F // 7 8 9 E
+    // Z X C V // A 0 B F
+    return match key {
+        Scancode::X => 0x0,
+        Scancode::Num1 => 0x1,
+        Scancode::Num2 => 0x2,
+        Scancode::Num3 => 0x3,
+        Scancode::Q => 0x4,
+        Scancode::W => 0x5,
+        Scancode::E => 0x6,
+        Scancode::A => 0x7,
+        Scancode::S => 0x8,
+        Scancode::D => 0x9,
+        Scancode::Z => 0xA,
+        Scancode::C => 0xB,
+        Scancode::Num4 => 0xC,
+        Scancode::R => 0xD,
+        Scancode::F => 0xE,
+        Scancode::V => 0xF,
+        _ => 0xFF,
+    }
 }
 
 pub fn main() {
@@ -66,8 +100,12 @@ pub fn main() {
     /* 
         Loop; 
             Delay/Sound Timers need to decrement at 60Hz
-            FDE loop should handle 700 commands a second
+            FDE loop runs at 600 cycles / s
     */
+    let cycles_per_second = 600;
+    let cycles_for_60fps = cycles_per_second / 60;
+    let mut cycle = 0;
+    // every cycle, increment this number and if its divisble by 10 decrement the delay and sound timers
 
     'mainloop: loop {
         // Fetch - Instructions are 2 bytes in length
@@ -343,15 +381,14 @@ pub fn main() {
             0xE => {
                 // 0xEX??
                 // Skip instructions based on key being pressed in this current loop
-                let x_register = nibbles[2];
+                let x_register = nibbles[1];
                 match [nibbles[2], nibbles[3]] {
                     [0x9, 0xE] => {
                         // 0xEX9E
                         // Skip if the key corresponding to the value in vX is currently pressed
                         known = true;
-                        let current = get_current_pressed_keys(&event_pump);
                         let x_value = registers.get(x_register);
-                        if current.contains(&x_value) {
+                        if event_pump.keyboard_state().is_scancode_pressed(get_scancode_for_digit(x_value)) {
                             program_counter += 2;
                         }
                     }
@@ -359,9 +396,8 @@ pub fn main() {
                         // 0xEXA1
                         // Skip if the key corresponding to the value in vX is not currently pressed
                         known = true;
-                        let current = get_current_pressed_keys(&event_pump);
                         let x_value = registers.get(x_register);
-                        if !current.contains(&x_value) {
+                        if !event_pump.keyboard_state().is_scancode_pressed(get_scancode_for_digit(x_value)) {
                             program_counter += 2;
                         }
                     }
@@ -403,13 +439,23 @@ pub fn main() {
                         // Block until a key is pressed
                         // when a key is pressed, put its value in register x
                         known = true;
-                        let current = get_current_pressed_keys(&event_pump);
-                        if current.len() == 0 {
+
+                        let mut found_valid_key = false;
+                        for (scancode, pressed) in event_pump.keyboard_state().scancodes() {
+                            if !pressed {
+                                continue;
+                            }
+
+                            let digit = get_digit_for_scancode(scancode);
+                            if digit != 0xFF {
+                                registers.set(x_register, digit);
+                                found_valid_key = true;
+                            }
+                        }
+                        
+                        if !found_valid_key  {
                             // "Block" by re-reading this instruction
                             program_counter -= 2;
-                        }
-                        else {
-                            registers.set(x_register, *current.first().unwrap());
                         }
                     }
                     [0x2, 0x9] => {
@@ -461,13 +507,16 @@ pub fn main() {
         }
         
         // Decrement timers within our 60fps loop
-        if sound > 0 {
-            // TODO
-            sound -= 1;
+        if cycle % cycles_for_60fps == 0 {
+            if sound > 0 {
+                // TODO
+                sound -= 1;
+            }
+            if delay > 0 {
+                delay -= 1;
+            }
         }
-        if delay > 0 {
-            delay -= 1;
-        }
+        cycle = (cycle + 1) % cycles_per_second;
 
         if args.step {
             loop {
@@ -479,7 +528,7 @@ pub fn main() {
         }
         else {
             // 60fps stuff
-            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / cycles_per_second));
         }
     }
 }
