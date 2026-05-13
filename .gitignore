@@ -1,1 +1,3 @@
 /target
+./roms
+!./roms/ibm.ch8
