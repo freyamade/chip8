@@ -3,8 +3,8 @@ use sdl2::{pixels::Color, rect::Point};
 const WIDTH: usize = 64;
 const HEIGHT: usize = 32;
 
-const BLACK: Color = Color::RGB(0, 0, 0);
-const WHITE: Color = Color::RGB(255, 255, 255);
+const BLACK: Color = Color::RGB(0x18, 0x19, 0x1c);
+const WHITE: Color = Color::RGB(0xee, 0xee, 0xee);
 
 // Make a constant array of bitmaps to extract each bit of a sprite byte to draw horizontally
 const BITMAPS: [u8; 8] = [
@@ -40,7 +40,7 @@ impl Display {
             (HEIGHT * pixel_scale) as u32
         ).position_centered().build().unwrap();
 
-        let mut canvas = window.into_canvas().build().unwrap();
+        let canvas = window.into_canvas().build().unwrap();
 
         // flag indicates whether we draw to that pixel (white) or leave it blank (black)
         return Display{ pixel_scale: pixel_scale, screen: [[false; HEIGHT]; WIDTH], canvas: canvas };
@@ -51,14 +51,14 @@ impl Display {
         self.render()
     }
 
-    pub fn draw(&mut self, mut x_coordinate: u8, mut y_coordinate: u8, bytes: Vec<u8>) -> bool {
+    pub fn draw(&mut self, x_coordinate: u8, y_coordinate: u8, bytes: Vec<u8>) -> bool {
         // Starting coordinates can wrap around the screen
         let x_start: usize = x_coordinate as usize % WIDTH;
         let y_start: usize = y_coordinate as usize % HEIGHT;
         let mut changed = false;
 
-        let mut x = x_start;
         let mut y = y_start;
+        let mut x;
 
         // Each byte in bytes is vertical information, each bit in the byte is horizontal information from left->right most->least significant
         for byte in bytes {

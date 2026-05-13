@@ -26,7 +26,7 @@ const FONT_BYTES: usize = 5;
 #[derive(Clone)]
 pub struct Memory {
     ram: [u8; MEMSIZE],
-    stack: Vec<u16>,
+    stack: Vec<usize>,
 }
 
 impl Memory {
@@ -52,11 +52,15 @@ impl Memory {
         }
     }
 
-    pub fn push(&mut self, data: u16) {
+    pub fn font_character(&self, character: usize) -> usize {
+        return FONT_OFFSET + (character * FONT_BYTES);
+    }
+
+    pub fn push(&mut self, data: usize) {
         self.stack.push(data);
     }
 
-    pub fn pop(&mut self) -> u16 {
+    pub fn pop(&mut self) -> usize {
         if self.stack.len() == 0 {
             return 0;
         }
