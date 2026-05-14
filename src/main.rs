@@ -68,7 +68,7 @@ fn get_digit_for_scancode(key: Scancode) -> u8 {
 
 pub fn main() {
     // Setup argument parsing
-    let (args, _) = opts! {
+    let (mut args, _) = opts! {
         synopsis "A simple chip8 emulator for learning the basics of emulation";
         opt new_shift:bool=false, desc: "Use the new format for 0x8XY6 and 0x8XYE instructions. Defaults false.";
         opt step:bool=false, desc: "Allow for stepping through of execution. Defaults false.";
@@ -122,6 +122,9 @@ pub fn main() {
                 Event::KeyDown { scancode: Some(Scancode::Escape), .. } => {
                     break 'mainloop
                 },
+                Event::KeyDown { scancode: Some(Scancode::Space), ..} => {
+                    args.step = !args.step
+                }
                 _ => {}
             }
         }
@@ -352,7 +355,8 @@ pub fn main() {
                 let random_number: u8 = rand::random();
                 let x_register = nibbles[1];
                 let offset = (command & 0x00FF) as u8;
-                registers.set(x_register, random_number & offset);
+                let value = random_number & offset;
+                registers.set(x_register, value);
             }
             0xD => {
                 // DXYN
@@ -441,11 +445,7 @@ pub fn main() {
                         known = true;
 
                         let mut found_valid_key = false;
-                        for (scancode, pressed) in event_pump.keyboard_state().scancodes() {
-                            if !pressed {
-                                continue;
-                            }
-
+                        for scancode in event_pump.keyboard_state().pressed_scancodes() {
                             let digit = get_digit_for_scancode(scancode);
                             if digit != 0xFF {
                                 registers.set(x_register, digit);
@@ -519,10 +519,17 @@ pub fn main() {
         cycle = (cycle + 1) % cycles_per_second;
 
         if args.step {
-            loop {
+            'steploop: loop {
                 let event = event_pump.wait_event();
-                if event.is_keyboard() || event.is_window() {
-                    break;
+                match event {
+                    Event::KeyDown { scancode: Some(Scancode::Space), .. } => {
+                        args.step = !args.step;
+                        break 'steploop
+                    }
+                    Event::KeyDown {..} => {
+                        break 'steploop
+                    }
+                    _ => {}
                 }
             }
         }

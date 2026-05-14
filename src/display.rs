@@ -55,7 +55,7 @@ impl Display {
         // Starting coordinates can wrap around the screen
         let x_start: usize = x_coordinate as usize % WIDTH;
         let y_start: usize = y_coordinate as usize % HEIGHT;
-        let mut changed = false;
+        let mut pixel_turned_off = false; // only set this to true if a pixel is turned off by this
 
         let mut y = y_start;
         let mut x;
@@ -70,8 +70,11 @@ impl Display {
                 let bit = byte & bitmap;
                 if bit > 0 {
                     // If the bit is 1, flip the x/y coordinate
+                    if self.screen[x][y] {
+                        // We're turning a bit off, so mark the flag accordingly
+                        pixel_turned_off = true;
+                    }
                     self.screen[x][y] = !self.screen[x][y];
-                    changed = true;
                 }
                 // Increment x and if it's gone off screen we can stop
                 x += 1;
@@ -86,12 +89,12 @@ impl Display {
             }
 
         }
-        // Re-render the screen if it changed
-        if changed {
-            self.render()
-        }
         
-        return changed;
+        // Always re-render the screen
+        self.render();
+        
+        // Update the register accordingly
+        return pixel_turned_off;
     }
 
     pub fn render(&mut self) {
